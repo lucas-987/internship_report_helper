@@ -1,4 +1,5 @@
 const Internship = require('../model/Reportable');
+const internshipDbOps = require('../database_operations/internship_db_operations');
 const checkAndHandleBody = require('./bodyChecker');
 const typeChecker = require('./checkType');
 
@@ -23,28 +24,19 @@ module.exports = {
         }
 
         try {
-            let internship = await Internship.findById(req.params.internshipId);
-    
-            if(internship == null) {
-                res.status(404)
-                    .json({
-                        success: false,
-                        message: 'Internship not found.'
-                    });
-
-                next();
-                return; 
-            }
-
-            internship.tasks.push(req.body);
+            let internship = await internshipDbOps.retireveInternship(req.params.internshipId, res, next);
             
-            internship.save();
-
-            res.status(200)
-                .json({
-                    success: 'true',
-                    data: 'Unavailable for the moment.'
-                });
+            if(internship != null) {
+                internship.tasks.push(req.body);
+                
+                internship.save();
+    
+                res.status(200)
+                    .json({
+                        success: 'true',
+                        data: 'Unavailable for the moment.'
+                    });
+            }
             
         } catch (error) {
             console.log(error);
