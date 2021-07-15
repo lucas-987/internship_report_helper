@@ -1,7 +1,27 @@
 const Internship = require('../model/Reportable.js');
 const internshipDbOps = require('../database_operations/internship_db_operations');
-const checkAndHandleBody = require('./bodyChecker');
-const typeChecker = require('./checkType');
+const checkAndHandleBody = require('./tools/bodyChecker');
+const typeChecker = require('./tools/checkType');
+const errorResponse = require('./tools/errorResponses');
+
+function handleRetrieveInternshipError(result, res) {
+    if(result == null) {
+        errorResponse.internalError(res);
+        return false;
+    }
+
+    if(result.resultCode == internshipDbOps.resultCode.OK) {
+        return true;
+    }
+    else if(result.resultCode == internshipDbOps.resultCode.NOT_FOUND) {
+        errorResponse.notFound(res);
+        return false;
+    }
+    else {
+        errorResponse.internalError(res);
+        return false;
+    }
+}
 
 module.exports = {
 
@@ -19,13 +39,9 @@ module.exports = {
             
         } catch (error) {
             console.log(error);
-            res.status(500)
-                .json({
-                    success: false,
-                    message: 'Internal server error'
-                });
-            
+            errorResponse.internalError(res);
             next();    
+            return;
         }
     },
 
@@ -35,31 +51,32 @@ module.exports = {
         // and if it is correct to do so
         if(! typeChecker.handleIdCheck(res, req.params.id)) {
             next();
-            return;    
+            return;
         }
 
         try {
-            let internship = await internshipDbOps.retireveInternship(req.params.id, res, next);
+            let internshipWrapper = await internshipDbOps.retrieveInternship(req.params.id);
 
-            if(internship != null) {
+            let isInternshipRetrieved = handleRetrieveInternshipError(internshipWrapper, res);
+            if(isInternshipRetrieved) {
                 res.status(200)
                     .json({
                         success: true,
-                        data: internship
+                        data: internshipWrapper.internship
                     });
     
                 next();
             }
+            else {
+                next();
+                return;
+            }
 
         } catch (error) {
             console.log(error.message);
-            res.status(500)
-                .json({
-                    success: false,
-                    message: 'Internal server error'
-                });
-            
+            errorResponse.internalError(res);
             next(); 
+            return;
         }
     },
 
@@ -92,12 +109,7 @@ module.exports = {
 
         } catch (error) {
             console.log(error);
-            res.status(500)
-                .json({
-                    success: false,
-                    message: 'Internal server error'
-                });
-            
+            errorResponse.internalError(res);
             next(); 
         }
     },
@@ -124,12 +136,7 @@ module.exports = {
             let result = await Internship.updateOne({_id: req.params.id},  { $set: req.body });
 
             if(result.n == 0) {
-                res.status(404)
-                    .json({
-                        success: false,
-                        message: 'Internship not found.'
-                    });
-
+                errorResponse.notFound(res);
                 next();
                 return; 
             }
@@ -141,13 +148,9 @@ module.exports = {
 
         } catch (error) {
             console.log(error);
-            res.status(500)
-                .json({
-                    success: false,
-                    message: 'Internal server error'
-                });
-            
+            errorResponse.internalError(res);
             next(); 
+            return;
         }
     },
 
@@ -161,12 +164,7 @@ module.exports = {
             let deletedInternship = await Internship.findByIdAndDelete(req.params.id);
 
             if(deletedInternship === null) {
-                res.status(404)
-                    .json({
-                        success: false,
-                        message: 'Internship not found.'
-                    });
-
+                errorResponse.notFound(res);
                 next();
                 return;    
             }
@@ -178,13 +176,9 @@ module.exports = {
 
         } catch (error) {
             console.log(error);
-            res.status(500)
-                .json({
-                    success: false,
-                    message: 'Internal server error'
-                });
-            
+            errorResponse.internalError(res);
             next();    
+            return;
         }
     }
 }

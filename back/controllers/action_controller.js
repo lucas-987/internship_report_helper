@@ -1,19 +1,24 @@
-const internshipDbOps = require('../database_operations/internship_db_operations');
+const { response } = require('express');
+const taskDbOps = require('../database_operations/task_db_operations');
 const checkAndHandleBody = require('./tools/bodyChecker');
 const typeChecker = require('./tools/checkType');
 const errorResponse = require('./tools/errorResponses');
 
-function handleRetrieveInternshipError(result, res) {
+function handleRetrieveTaskError(result, res) {
     if(result == null) {
         errorResponse.internalError(res);
         return false;
     }
 
-    if(result.resultCode == internshipDbOps.resultCode.OK) {
+    if(result.resultCode == taskDbOps.resultCode.OK) {
         return true;
     }
-    else if(result.resultCode == internshipDbOps.resultCode.NOT_FOUND) {
+    else if(result.resultCode == taskDbOps.resultCode.NOT_FOUND) {
         errorResponse.notFound(res);
+        return false;
+    }
+    else if(result.resultCode == taskDbOps.resultCode.INTERNAL_ERROR) {
+        errorResponse.internalError(res);
         return false;
     }
     else {
@@ -22,36 +27,32 @@ function handleRetrieveInternshipError(result, res) {
     }
 }
 
-/*
- *  The 2 "get methods" in this controller will probably not be used
- *  as we will already have tasks when we retrieve all internship. But
- *  since the main goal here is to learn I will still implement them (and
- *  its not a lot of work to do so). 
- */
-
 module.exports = {
-    // gets all tasks of an internship
-    async getAllTasks(req, res, next) {
-        if(! typeChecker.handleIdCheck(res, req.params.internshipId)) {
+    async getAllActions(req, res, next) {
+        if(! typeChecker.handleIdCheck(res, req.params.internshipId)
+            || ! typeChecker.handleIdCheck(res, req.params.taskId)) {
+
             next();
             return;
         }
 
+        internalError = false;
         try {
-            let internshipWrapper = await internshipDbOps.retrieveInternship(req.params.internshipId);
+            let taskWrapper = await taskDbOps.retrieveTask(req.params.internshipId, req.params.taskId);
             
-            let isInternshipRetrieved = handleRetrieveInternshipError(internshipWrapper, res);
-            if(isInternshipRetrieved) {
+            let isTaskRetrieved = handleRetrieveTaskError(taskWrapper, res);
+            if(isTaskRetrieved) {
     
                 res.status(200)
                     .json({
-                        success: 'true',
-                        data: internshipWrapper.internship.tasks
+                        success: true,
+                        data: taskWrapper.task.actions
                     });
 
-                next();    
+                next();
+                return;   
             }
-            else {
+            else {
                 next();
                 return;
             }
@@ -60,44 +61,46 @@ module.exports = {
             console.log(error);
             errorResponse.internalError(res);
             next(); 
-        }        
+            return;
+        }
     },
 
-    async getTask(req, res, next) {
-        if(! typeChecker.handleIdCheck(res, req.params.internshipId) 
-            || ! typeChecker.handleIdCheck(res, req.params.taskId)) {
+    async getAction(req, res, next) {
+        if(! typeChecker.handleIdCheck(res, req.params.internshipId)
+            || ! typeChecker.handleIdCheck(res, req.params.taskId)
+            || ! typeChecker.handleIdCheck(res, req.params.actionId)) {
 
-               next();
-               return; 
+            next();
+            return;
         }
 
         try {
-            let internshipWrapper = await internshipDbOps.retrieveInternship(req.params.internshipId);
+            let taskWrapper = await taskDbOps.retrieveTask(req.params.internshipId, req.params.taskId);
             
-            let isInternshipRetrieved = handleRetrieveInternshipError(internshipWrapper, res);
-            if(isInternshipRetrieved) {
+            let isTaskRetrieved = handleRetrieveTaskError(taskWrapper, res);
+            if(isTaskRetrieved) {
     
-                let task = internshipWrapper.internship.tasks.id(req.params.taskId);
+                let action = taskWrapper.task.actions.id(req.params.actionId);
 
-                if(task == null) {
+                if(action == null) {
                     errorResponse.notFound(res);
                     next();
-                    return;    
+                    return;
                 }
 
                 res.status(200)
                     .json({
                         success: 'true',
-                        data: task
+                        data: action
                     });
 
                 next();
             }
             else {
-                next();
+                next(); 
                 return;
             }
-
+            
         } catch (error) {
             console.log(error);
             errorResponse.internalError(res);
@@ -106,8 +109,10 @@ module.exports = {
         } 
     },
 
-    async createNewTask(req, res, next) {
-        if(! typeChecker.handleIdCheck(res, req.params.internshipId)) {
+    async createNewAction(req, res, next) {
+        if(! typeChecker.handleIdCheck(res, req.params.internshipId)
+            || ! typeChecker.handleIdCheck(res, req.params.taskId)) {
+
             next();
             return;
         }
@@ -126,13 +131,13 @@ module.exports = {
         }
 
         try {
-            let internshipWrapper = await internshipDbOps.retrieveInternship(req.params.internshipId, res, next);
+            let taskWrapper = await taskDbOps.retrieveTask(req.params.internshipId, req.params.taskId);
             
-            let isInternshipRetrieved = handleRetrieveInternshipError(internshipWrapper, res);
-            if(isInternshipRetrieved) {
-                internshipWrapper.internship.tasks.push(req.body);
+            let isTaskRetrieved = handleRetrieveTaskError(taskWrapper, res);
+            if(isTaskRetrieved) {
+                taskWrapper.task.actions.push(req.body);
                 
-                internshipWrapper.internship.save();
+                taskWrapper.task.parent().save();
     
                 res.status(200)
                     .json({
@@ -142,8 +147,8 @@ module.exports = {
 
                 next();    
             }
-            else {
-                next(); 
+            else{
+                next();
                 return;
             }
             
@@ -154,12 +159,13 @@ module.exports = {
         }
     },
 
-    async updateTask(req, res, next) {
-        if(! typeChecker.handleIdCheck(res, req.params.internshipId) 
-            || ! typeChecker.handleIdCheck(res, req.params.taskId)) {
+    async updateAction(req, res, next) {
+        if(! typeChecker.handleIdCheck(res, req.params.internshipId)
+            || ! typeChecker.handleIdCheck(res, req.params.taskId)
+            || ! typeChecker.handleIdCheck(res, req.params.actionId)) {
 
-               next();
-               return; 
+            next();
+            return;
         }
 
         const allowedKeys = ["title", "start_date", "description", "end_date"];
@@ -175,20 +181,20 @@ module.exports = {
         }
 
         try {
-            let internshipWrapper = await internshipDbOps.retrieveInternship(req.params.internshipId, res, next);
+            let taskWrapper = await taskDbOps.retrieveTask(req.params.internshipId, req.params.taskId);
             
-            let isInternshipRetrieved = handleRetrieveInternshipError(internshipWrapper, res);
-            if(isInternshipRetrieved) {
-                let task = internshipWrapper.internship.tasks.id(req.params.taskId);
+            let isTaskRetrieved = handleRetrieveTaskError(taskWrapper, res);
+            if(isTaskRetrieved) {
+                let action = taskWrapper.task.actions.id(req.params.actionId);
 
-                if(task == null) {
+                if(action == null) {
                     errorResponse.notFound(res);
                     next();
-                    return; 
+                    return;    
                 }
 
-                task = Object.assign(task, req.body)
-                internshipWrapper.internship.save();
+                action = Object.assign(action, req.body)
+                taskWrapper.task.parent().save();
                 
                 res.status(200)
                     .json({
@@ -210,29 +216,30 @@ module.exports = {
         }
     },
 
-    async deleteTask(req, res, next) {
-        if(! typeChecker.handleIdCheck(res, req.params.internshipId) 
-            || ! typeChecker.handleIdCheck(res, req.params.taskId)) {
+    async deleteAction(req, res, next) {
+        if(! typeChecker.handleIdCheck(res, req.params.internshipId)
+            || ! typeChecker.handleIdCheck(res, req.params.taskId)
+            || ! typeChecker.handleIdCheck(res, req.params.actionId)) {
 
-               next();
-               return; 
+            next();
+            return;
         }
 
         try {
-            let internshipWrapper = await internshipDbOps.retrieveInternship(req.params.internshipId);
+            let taskWrapper = await taskDbOps.retrieveTask(req.params.internshipId, req.params.taskId);
             
-            let isInternshipRetrieved = handleRetrieveInternshipError(internshipWrapper, res);
-            if(isInternshipRetrieved) {
-                let task = internshipWrapper.internship.tasks.id(req.params.taskId);
+            let isTaskRetrieved = handleRetrieveTaskError(taskWrapper, res);
+            if(isTaskRetrieved) {
+                let action = taskWrapper.task.actions.id(req.params.actionId);
                 
-                if(task == null) {
+                if(action == null) {
                     errorResponse.notFound(res);
                     next();
                     return;    
                 }
                 
-                task.remove();
-                internshipWrapper.internship.save();
+                action.remove();
+                taskWrapper.task.parent().save();
 
                 res.status(200)
                     .json({
